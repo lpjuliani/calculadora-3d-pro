@@ -1,8 +1,7 @@
+// src/App.tsx
 import React from 'react';
-import LoginPage from './pages/LoginPage';
+import LoginPage from './components/LoginPage'; // <- estava ./pages/LoginPage (errado)
 
-function App() {
+export default function App() {
   return <LoginPage />;
 }
-
-export default App;
