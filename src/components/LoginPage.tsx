@@ -1,7 +1,8 @@
 // src/pages/LoginPage.tsx
 import React, { useState } from 'react';
 import { Calculator, User, Lock, LogIn } from 'lucide-react';
-import { useAuth } from './context/AuthContext';
+import { useAuth } from '../context/AuthContext';
+
 
 const LoginPage: React.FC = () => {
   const { login, state: authState } = useAuth();
@@ -137,4 +138,5 @@ const LoginPage: React.FC = () => {
 };
 
 export default LoginPage;
+
 
