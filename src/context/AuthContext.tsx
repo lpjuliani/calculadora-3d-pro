@@ -1,4 +1,3 @@
-// src/context/AuthContext.tsx
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { ensureProfileId } from '../utils/db';
 
@@ -299,3 +298,4 @@ export const useAuth = () => {
   if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
 };
+
