@@ -6,14 +6,10 @@ import { useAuth } from '../context/AuthContext';
 const LoginPage: React.FC = () => {
   const { login, state: authState } = useAuth();
 
-  const [formData, setFormData] = useState({
-    username: '',
-    password: '',
-  });
+  const [formData, setFormData] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // >>> CORREÇÃO AQUI: handler async + await no login
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -23,7 +19,6 @@ const LoginPage: React.FC = () => {
       const success = await login(formData.username, formData.password);
 
       if (!success) {
-        // Verificar se o usuário existe para mensagem mais amigável
         const identifier = formData.username.trim().toLowerCase();
         const userData = Object.values(authState.users).find(u =>
           u.user.username.toLowerCase() === identifier ||
@@ -40,9 +35,8 @@ const LoginPage: React.FC = () => {
         return;
       }
 
-      // SUCESSO: se sua app faz roteamento, redirecione para a área logada.
-      // Se o app renderiza condicional pelo estado global, pode nem precisar.
-      // window.location.assign('/app'); // descomente se quiser forçar navegação
+      // SUCESSO: sai da tela de login (ajuste a rota se precisar)
+      window.location.replace('/'); // ou '/app'
     } catch (err: any) {
       console.error('[LOGIN EXCEPTION]', err);
       setError('Erro inesperado no login.');
@@ -62,9 +56,7 @@ const LoginPage: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Calculadora 3D Pro
           </h1>
-          <p className="text-gray-600">
-            Entre na sua conta
-          </p>
+          <p className="text-gray-600">Entre na sua conta</p>
         </div>
 
         {/* Form */}
@@ -72,9 +64,7 @@ const LoginPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-6" autoComplete="on">
             {/* Username */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Usuário ou E-mail *
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Usuário ou E-mail *</label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
@@ -91,9 +81,7 @@ const LoginPage: React.FC = () => {
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Senha *
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Senha *</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
@@ -108,7 +96,7 @@ const LoginPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Error Message */}
+            {/* Error */}
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                 <div className="flex items-center">
@@ -120,7 +108,7 @@ const LoginPage: React.FC = () => {
               </div>
             )}
 
-            {/* Submit Button */}
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
@@ -140,12 +128,8 @@ const LoginPage: React.FC = () => {
 
         {/* Footer */}
         <div className="text-center mt-8">
-          <p className="text-gray-500 text-sm">
-            Não tem acesso? Solicite credenciais ao administrador.
-          </p>
-          <p className="text-xs text-gray-400 mt-2">
-            Você pode usar seu usuário ou e-mail para fazer login
-          </p>
+          <p className="text-gray-500 text-sm">Não tem acesso? Solicite credenciais ao administrador.</p>
+          <p className="text-xs text-gray-400 mt-2">Você pode usar seu usuário ou e-mail para fazer login</p>
         </div>
       </div>
     </div>
