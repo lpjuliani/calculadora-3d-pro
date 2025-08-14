@@ -1,7 +1,9 @@
-// src/App.tsx
 import React from 'react';
-import LoginPage from './components/LoginPage'; // atenção: components, não pages
+import LoginPage from './components/LoginPage';
+export default function App() {
+
 
 export default function App() {
   return <LoginPage />;
 }
+
