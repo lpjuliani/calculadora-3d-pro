@@ -1,127 +1,139 @@
-import React, { useState, useEffect } from 'react';
-import { Calculator, Database, FileText, BarChart3, LogOut, User } from 'lucide-react';
-import MainPage from './components/MainPage';
-import CadastrosPage from './components/CadastrosPage';
-import LoginPage from './components/LoginPage';
-import ProfileModal from './components/ProfileModal';
-import { AppProvider } from './context/AppContext';
-import { AuthProvider, useAuth } from './context/AuthContext';
+// src/pages/LoginPage.tsx
+import React, { useState } from 'react';
+import { Calculator, User, Lock, LogIn } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-const AppContent: React.FC = () => {
-  const { state: authState, logout } = useAuth();
-  const [currentPage, setCurrentPage] = useState<'main' | 'cadastros'>('main');
-  const [profileOpen, setProfileOpen] = useState(false);
+const LoginPage: React.FC = () => {
+  const { login, state: authState } = useAuth();
 
-  if (!authState.isAuthenticated) {
-    return <LoginPage />;
-  }
+  const [formData, setFormData] = useState({ username: '', password: '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const success = await login(formData.username, formData.password);
+
+      if (!success) {
+        const identifier = formData.username.trim().toLowerCase();
+        const userData = Object.values(authState.users).find(u =>
+          u.user.username.toLowerCase() === identifier ||
+          (u.user.email || '').toLowerCase() === identifier
+        );
+
+        if (!userData) {
+          setError('Usuário não encontrado. Verifique se digitou corretamente.');
+        } else if (userData.user.suspended) {
+          setError('Acesso suspenso. Entre em contato com o administrador.');
+        } else {
+          setError('Senha incorreta. Tente novamente.');
+        }
+        return;
+      }
+
+      // SUCESSO: sai da tela de login (ajuste a rota se precisar)
+      window.location.replace('/'); // ou '/app'
+    } catch (err: any) {
+      console.error('[LOGIN EXCEPTION]', err);
+      setError('Erro inesperado no login.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <AppProvider>
-      <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-orange-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full">
         {/* Header */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-blue-500 rounded-lg flex items-center justify-center">
-                  <Calculator className="w-5 h-5 text-white" />
-                </div>
-                <h1 className="text-xl font-bold text-gray-900">
-                  Calculadora 3D Pro
-                </h1>
-              </div>
-              
-              {/* Navigation */}
-              <nav className="flex items-center space-x-1">
-                <button
-                  onClick={() => setCurrentPage('main')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    currentPage === 'main'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <FileText className="w-4 h-4" />
-                    <span>Nova Impressão</span>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setCurrentPage('cadastros')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    currentPage === 'cadastros'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <Database className="w-4 h-4" />
-                    <span>Cadastros e Estoque</span>
-                  </div>
-                </button>
-              </nav>
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-gradient-to-r from-orange-500 to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Calculator className="w-8 h-8 text-white" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Calculadora 3D Pro
+          </h1>
+          <p className="text-gray-600">Entre na sua conta</p>
+        </div>
 
-              {/* User Menu */}
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                  <User className="w-4 h-4" />
-                  <span>{authState.currentUser?.username}</span>
-                </div>
-                <button
-                onClick={() => setProfileOpen(true)}
-                className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <User className="w-4 h-4" />
-                <span>Perfil</span>
-                </button>
-                <button
-                  onClick={logout}
-                  className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Sair</span>
-                </button>
+        {/* Form */}
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
+          <form onSubmit={handleSubmit} className="space-y-6" autoComplete="on">
+            {/* Username */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Usuário ou E-mail *</label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  required
+                  value={formData.username}
+                  onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="ex.: lucas ou lucas@email.com"
+                  autoComplete="username email"
+                />
               </div>
             </div>
-          </div>
-        </header>
 
-        {/* Main Content */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {currentPage === 'main' ? <MainPage /> : <CadastrosPage />}
-        </main>
+            {/* Password */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Senha *</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="password"
+                  required
+                  value={formData.password}
+                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Digite sua senha"
+                  autoComplete="current-password"
+                />
+              </div>
+            </div>
+
+            {/* Error */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <svg className="w-5 h-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-red-700 text-sm font-medium">{error}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-orange-500 to-blue-500 text-white font-semibold py-3 px-6 rounded-lg hover:from-orange-600 hover:to-blue-600 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+            >
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <LogIn className="w-5 h-5" />
+                  <span>Entrar</span>
+                </>
+              )}
+            </button>
+          </form>
+        </div>
 
         {/* Footer */}
-        <footer className="bg-white border-t border-gray-200 mt-16">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="text-center text-sm text-gray-500">
-              © {new Date().getFullYear()}{' '}
-              <a 
-                href="https://www.instagram.com/stratta3d/" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
-              >
-                Stratta3D
-              </a>
-              {' · v1.0 · eficiência em cada camada'}
-            </div>
-          </div>
-        </footer>
+        <div className="text-center mt-8">
+          <p className="text-gray-500 text-sm">Não tem acesso? Solicite credenciais ao administrador.</p>
+          <p className="text-xs text-gray-400 mt-2">Você pode usar seu usuário ou e-mail para fazer login</p>
+        </div>
       </div>
-      
-      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
-    </AppProvider>
+    </div>
   );
 };
 
-function App() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
-  );
-}
-
-export default App;
+export default LoginPage;
