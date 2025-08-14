@@ -12,7 +12,7 @@ function pickUniqueUsername(base: string, users: Record<string, { password: stri
   return candidate;
 }
 
-interface User {
+export interface User {
   id: string;
   username: string;
   email: string;
@@ -98,6 +98,7 @@ const AuthContext = createContext<{
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
+  // boot: carrega users/sessão e cria seed admin se não existir
   useEffect(() => {
     const savedUsersRaw = localStorage.getItem('3d-printing-users');
     let usersMap: Record<string, { password: string; user: User }> = {};
@@ -113,7 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             usersMap[keyLower] = { password: entry.password, user: { ...entry.user, role } as User };
           }
         }
-      } catch { }
+      } catch { /* ignore */ }
     }
 
     const hasAdmin = Object.values(usersMap).some(u => u.user.role === 'admin');
@@ -147,16 +148,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const user = JSON.parse(savedCurrentUser) as User;
         const userWithRole = { ...user, role: user.role ?? 'user' as const };
         dispatch({ type: 'LOGIN', payload: userWithRole });
-      } catch { }
+      } catch { /* ignore */ }
     }
   }, []);
 
+  // persiste users
   useEffect(() => {
     if (Object.keys(state.users).length > 0) {
       localStorage.setItem('3d-printing-users', JSON.stringify(state.users));
     }
   }, [state.users]);
 
+  // persiste sessão atual
   useEffect(() => {
     if (state.currentUser) {
       localStorage.setItem('3d-printing-current-user', JSON.stringify(state.currentUser));
@@ -165,7 +168,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.currentUser]);
 
-  // PATCH: login não bloqueia mais a UI no ensureProfileId
+  // LOGIN que não trava a UI esperando Supabase
   const login = async (username: string, password: string): Promise<boolean> => {
     const id = username.trim().toLowerCase();
 
@@ -187,27 +190,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       lastLoginAt: new Date().toISOString(),
     };
 
+    // autentica JÁ
     dispatch({ type: 'UPDATE_USER', payload: { usernameKey: key, user: updatedUserImmediate } });
     dispatch({ type: 'LOGIN', payload: updatedUserImmediate });
 
+    // sincroniza id com Supabase em background (com timeout)
     (async () => {
       try {
         const timeoutMs = 4000;
-        const withTimeout = <T>(p: Promise<T>) =>
+        const withTimeout = <T,>(p: Promise<T>) =>
           Promise.race([
             p,
-            new Promise<T>((_, rej) =>
-              setTimeout(() => rej(new Error('ensureProfileId: timeout')), timeoutMs)
-            ),
+            new Promise<T>((_, rej) => setTimeout(() => rej(new Error('ensureProfileId: timeout')), timeoutMs)),
           ]);
 
         const supaId = await withTimeout(ensureProfileId(userData!.user.email, userData!.user.role));
-
         if (supaId && supaId !== localId) {
-          const syncedUser: User = {
-            ...updatedUserImmediate,
-            id: supaId,
-          };
+          const syncedUser: User = { ...updatedUserImmediate, id: supaId };
           dispatch({ type: 'UPDATE_USER', payload: { usernameKey: key, user: syncedUser } });
           dispatch({ type: 'LOGIN', payload: syncedUser });
         }
@@ -300,5 +299,3 @@ export const useAuth = () => {
   if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
 };
-
-export type { User };
