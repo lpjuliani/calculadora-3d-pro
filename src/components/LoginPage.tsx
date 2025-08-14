@@ -1,9 +1,11 @@
+// src/pages/LoginPage.tsx
 import React, { useState } from 'react';
 import { Calculator, User, Lock, LogIn } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const LoginPage: React.FC = () => {
   const { login, state: authState } = useAuth();
+
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -11,20 +13,23 @@ const LoginPage: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // >>> CORREÇÃO AQUI: handler async + await no login
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      const success = login(formData.username, formData.password);
+      const success = await login(formData.username, formData.password);
+
       if (!success) {
-        // Verificar se o usuário existe
+        // Verificar se o usuário existe para mensagem mais amigável
         const identifier = formData.username.trim().toLowerCase();
-        const userData = Object.values(authState.users).find(u => 
-          u.user.username.toLowerCase() === identifier || u.user.email.toLowerCase() === identifier
+        const userData = Object.values(authState.users).find(u =>
+          u.user.username.toLowerCase() === identifier ||
+          (u.user.email || '').toLowerCase() === identifier
         );
-        
+
         if (!userData) {
           setError('Usuário não encontrado. Verifique se digitou corretamente.');
         } else if (userData.user.suspended) {
@@ -32,7 +37,15 @@ const LoginPage: React.FC = () => {
         } else {
           setError('Senha incorreta. Tente novamente.');
         }
+        return;
       }
+
+      // SUCESSO: se sua app faz roteamento, redirecione para a área logada.
+      // Se o app renderiza condicional pelo estado global, pode nem precisar.
+      // window.location.assign('/app'); // descomente se quiser forçar navegação
+    } catch (err: any) {
+      console.error('[LOGIN EXCEPTION]', err);
+      setError('Erro inesperado no login.');
     } finally {
       setLoading(false);
     }
@@ -56,14 +69,14 @@ const LoginPage: React.FC = () => {
 
         {/* Form */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6" autoComplete="on">
             {/* Username */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Usuário ou E-mail *
               </label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
                   required
@@ -71,6 +84,7 @@ const LoginPage: React.FC = () => {
                   onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="ex.: lucas ou lucas@email.com"
+                  autoComplete="username email"
                 />
               </div>
             </div>
@@ -81,7 +95,7 @@ const LoginPage: React.FC = () => {
                 Senha *
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="password"
                   required
@@ -89,6 +103,7 @@ const LoginPage: React.FC = () => {
                   onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Digite sua senha"
+                  autoComplete="current-password"
                 />
               </div>
             </div>
