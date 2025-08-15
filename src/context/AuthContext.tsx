@@ -15,6 +15,26 @@ function pickUniqueUsername(
   while (users[candidate]) candidate = `${base}${i++}`;
   return candidate;
 }
+function readUsersFromLS(): Record<string, { password: string; user: User }> {
+  try {
+    const raw = localStorage.getItem('3d-printing-users');
+    if (!raw) return {};
+    const loaded = JSON.parse(raw) as Record<string, { password: string; user: User }>;
+    // normaliza chaves (username minúsculo) e garante role
+    const out: Record<string, { password: string; user: User }> = {};
+    for (const k of Object.keys(loaded)) {
+      const entry = loaded[k];
+      if (entry && entry.user) {
+        const keyLower = (entry.user.username || k).toLowerCase();
+        const role = entry.user.role || 'user';
+        out[keyLower] = { password: entry.password, user: { ...entry.user, role } as User };
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 /** Tipos */
 export interface User {
@@ -133,27 +153,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /** Boot: carrega users/sessão e cria seed admin se não existir */
   useEffect(() => {
-    const savedUsersRaw = localStorage.getItem('3d-printing-users');
-    let usersMap: Record<string, { password: string; user: User }> = {};
-
-    if (savedUsersRaw) {
-      try {
-        const loaded = JSON.parse(savedUsersRaw) as typeof usersMap;
-        for (const k of Object.keys(loaded)) {
-          const entry = loaded[k];
-          if (entry && entry.user) {
-            const keyLower = (entry.user.username || k).toLowerCase();
-            const role = entry.user.role || 'user';
-            usersMap[keyLower] = {
-              password: entry.password,
-              user: { ...entry.user, role } as User,
-            };
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
+    let usersMap = readUsersFromLS();
 
     // Seed ADMIN (ENV → Vercel)
     const hasAdmin = Object.values(usersMap).some((u) => u.user.role === 'admin');
@@ -217,23 +217,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       new Promise<T>((_, rej) => setTimeout(() => rej(new Error('ensureProfileId: timeout')), ms)),
     ]);
 
-  /** LOGIN (autentica já pelo local e sincroniza Supabase em background) */
+  /** LOGIN: recarrega do localStorage se o estado ainda não tiver usuários */
   const login = async (username: string, password: string): Promise<boolean> => {
-    const id = username.trim().toLowerCase();
+    const id = (username || '').trim().toLowerCase();
 
-    let userData = state.users[id];
+    // 1) Usa o que temos no estado
+    let users = state.users;
+
+    // 2) Se estiver vazio, recarrega do localStorage e injeta no estado
+    if (!users || Object.keys(users).length === 0) {
+      users = readUsersFromLS();
+      if (Object.keys(users).length > 0) {
+        dispatch({ type: 'LOAD_USERS', payload: users });
+      }
+    }
+
+    // 3) Resolve pelo username (chave) ou e-mail
+    let userData = users[id];
     if (!userData) {
-      const byEmail = Object.values(state.users).find(
-        (u) => (u.user.email || '').toLowerCase() === id
-      );
-      if (byEmail) userData = byEmail;
+      const vals = Object.values(users) as Array<{ password: string; user: User }>;
+      userData = vals.find((u) => (u.user.email || '').toLowerCase() === id);
     }
 
     if (!userData) return false;
     if (userData.user.suspended) return false;
     if (userData.password !== password) return false;
 
-    const key = userData.user.username.toLowerCase();
+    const key = (userData.user.username || '').toLowerCase();
     const localId = userData.user.id || Date.now().toString();
     const updatedUserImmediate: User = {
       ...userData.user,
@@ -323,16 +333,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // e-mail duplicado (exceto eu)
     if (data.email) {
       const dup = Object.values(state.users).some(
-        (u) => (u.user.email || '').toLowerCase() === data.email!.toLowerCase() && u.user.id !== me.id
+        (u) =>
+          (u.user.email || '').toLowerCase() === data.email!.toLowerCase() &&
+          u.user.id !== me.id
       );
       if (dup) return { ok: false, reason: 'email-taken' };
     }
 
     const oldKey = me.username.toLowerCase();
-    const newUsername = (data.username?.trim() || me.username);
+    const newUsername = data.username?.trim() || me.username;
     const newKey = newUsername.toLowerCase();
 
-    if (newKey !== oldKey && state.users[newKey]) return { ok: false, reason: 'username-taken' };
+    if (newKey !== oldKey && state.users[newKey])
+      return { ok: false, reason: 'username-taken' };
 
     const newUser: User = { ...me, username: newUsername, email: data.email ?? me.email };
 
