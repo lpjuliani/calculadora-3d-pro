@@ -1,43 +1,19 @@
-// src/context/AuthContext.tsx
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { ensureProfileId } from '../utils/db';
 
-/** Utils */
 function slugFromEmail(email: string) {
   return email.split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '');
 }
-function pickUniqueUsername(
-  base: string,
-  users: Record<string, { password: string; user: User }>
-) {
+
+function pickUniqueUsername(base: string, users: Record<string, { password: string; user: User }>) {
   let candidate = base || 'user';
   let i = 1;
-  while (users[candidate]) candidate = `${base}${i++}`;
+  while (users[candidate]) {
+    candidate = `${base}${i++}`;
+  }
   return candidate;
 }
-function readUsersFromLS(): Record<string, { password: string; user: User }> {
-  try {
-    const raw = localStorage.getItem('3d-printing-users');
-    if (!raw) return {};
-    const loaded = JSON.parse(raw) as Record<string, { password: string; user: User }>;
-    // normaliza chaves (username minúsculo) e garante role
-    const out: Record<string, { password: string; user: User }> = {};
-    for (const k of Object.keys(loaded)) {
-      const entry = loaded[k];
-      if (entry && entry.user) {
-        const keyLower = (entry.user.username || k).toLowerCase();
-        const role = entry.user.role || 'user';
-        out[keyLower] = { password: entry.password, user: { ...entry.user, role } as User };
-      }
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
 
-/** Tipos */
-export interface User {
+interface User {
   id: string;
   username: string;
   email: string;
@@ -46,29 +22,41 @@ export interface User {
   lastLoginAt?: string;
   suspended?: boolean;
 }
+
 interface AuthState {
   isAuthenticated: boolean;
   currentUser: User | null;
   users: Record<string, { password: string; user: User }>;
 }
+
 type AuthAction =
   | { type: 'LOGIN'; payload: User }
   | { type: 'LOGOUT' }
-  | { type: 'CREATE_USER'; payload: { username: string; email: string; password: string; role?: 'admin' | 'user' } }
+  | { type: 'CREATE_USER'; payload: { username: string; email: string; password: string; role?: 'admin'|'user' } }
   | { type: 'LOAD_USERS'; payload: Record<string, { password: string; user: User }> }
   | { type: 'UPDATE_USER'; payload: { usernameKey: string; user: User; password?: string } }
   | { type: 'SUSPEND_USER'; payload: { userId: string; suspended: boolean } };
 
-/** Estado inicial */
-const initialState: AuthState = { isAuthenticated: false, currentUser: null, users: {} };
+const initialState: AuthState = {
+  isAuthenticated: false,
+  currentUser: null,
+  users: {}
+};
 
-/** Reducer */
 function authReducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
     case 'LOGIN':
-      return { ...state, isAuthenticated: true, currentUser: action.payload };
+      return {
+        ...state,
+        isAuthenticated: true,
+        currentUser: action.payload
+      };
     case 'LOGOUT':
-      return { ...state, isAuthenticated: false, currentUser: null };
+      return {
+        ...state,
+        isAuthenticated: false,
+        currentUser: null
+      };
     case 'CREATE_USER': {
       const newUser: User = {
         id: Date.now().toString(),
@@ -82,12 +70,16 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
         ...state,
         users: {
           ...state.users,
-          [key]: { password: action.payload.password, user: newUser },
-        },
+          [key]: { password: action.payload.password, user: newUser }
+        }
       };
     }
     case 'LOAD_USERS':
-      return { ...state, users: action.payload };
+      return {
+        ...state,
+        users: action.payload
+      };
+    default:
     case 'UPDATE_USER': {
       const { usernameKey, user, password } = action.payload;
       return {
@@ -96,292 +88,307 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
           ...state.users,
           [usernameKey]: {
             password: password ?? state.users[usernameKey].password,
-            user,
-          },
+            user
+          }
         },
-        currentUser: state.currentUser?.id === user.id ? user : state.currentUser,
+        currentUser: state.currentUser?.id === user.id ? user : state.currentUser
       };
     }
     case 'SUSPEND_USER': {
       const { userId, suspended } = action.payload;
       const updatedUsers = { ...state.users };
+      
+      // Encontrar o usuário pelo ID
       for (const key in updatedUsers) {
         if (updatedUsers[key].user.id === userId) {
           updatedUsers[key] = {
             ...updatedUsers[key],
-            user: { ...updatedUsers[key].user, suspended },
+            user: { ...updatedUsers[key].user, suspended }
           };
           break;
         }
       }
+      
+      // Se o usuário suspenso é o atual, fazer logout
       const shouldLogout = state.currentUser?.id === userId && suspended;
+      
       return {
         ...state,
         users: updatedUsers,
         isAuthenticated: shouldLogout ? false : state.isAuthenticated,
-        currentUser: shouldLogout ? null : state.currentUser,
+        currentUser: shouldLogout ? null : state.currentUser
       };
     }
-    default:
       return state;
   }
 }
 
-/** Contexto */
 const AuthContext = createContext<{
   state: AuthState;
   dispatch: React.Dispatch<AuthAction>;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => boolean;
   logout: () => void;
-  createUser: (data: {
-    email: string;
-    password: string;
-    role?: 'admin' | 'user';
-    username?: string;
-  }) => Promise<boolean>;
-  updateProfile: (data: {
-    username?: string;
-    email?: string;
-    newPassword?: string;
-  }) => { ok: boolean; reason?: string };
+  createUser: (data: {email: string; password: string; role?: 'admin'|'user'; username?: string}) => boolean;
+  updateProfile: (data: { username?: string; email?: string; newPassword?: string }) => { ok: boolean; reason?: string };
   suspendUser: (userId: string, suspended: boolean) => boolean;
 } | null>(null);
 
-/** Provider */
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  /** Boot: carrega users/sessão e cria seed admin se não existir */
   useEffect(() => {
-    let usersMap = readUsersFromLS();
+    // CRÍTICO: Carregar dados existentes PRIMEIRO, sem sobrescrever
+    if (typeof window === 'undefined') return; // SSR protection
+    
+    console.log('🔍 Carregando dados de usuários...');
+    
+    // 1) Carregar mapa salvo (NUNCA sobrescrever se existir)
+    const savedUsersRaw = localStorage.getItem('3d-printing-users');
+    let usersMap: Record<string, { password: string; user: User }> = {};
 
-    // Seed ADMIN (ENV → Vercel)
-    const hasAdmin = Object.values(usersMap).some((u) => u.user.role === 'admin');
+    if (savedUsersRaw) {
+      try {
+        const loaded = JSON.parse(savedUsersRaw) as typeof usersMap;
+        console.log('📂 Usuários encontrados no localStorage:', Object.keys(loaded));
+
+        // MIGRAÇÃO SEGURA: preservar dados existentes
+        for (const k of Object.keys(loaded)) {
+          const entry = loaded[k];
+          if (entry && entry.user) {
+            const keyLower = (entry.user.username || k).toLowerCase();
+            const role = entry.user.role || 'user'; // legacy -> user
+            usersMap[keyLower] = {
+              password: entry.password,
+              user: { ...entry.user, role } as User,
+            };
+          }
+        }
+        console.log('✅ Usuários migrados:', Object.keys(usersMap));
+      } catch (e) {
+        console.error('❌ Erro lendo usuários (mantendo dados existentes):', e);
+        // NÃO limpar em caso de erro - manter o que tem
+      }
+    } else {
+      console.log('📝 Nenhum usuário encontrado - primeira execução');
+    }
+
+    // 2) APENAS criar admin se NÃO existir nenhum admin
+    const hasAdmin = Object.values(usersMap).some(u => u.user.role === 'admin');
+    console.log('👑 Admin existe?', hasAdmin);
+
     if (!hasAdmin) {
       const adminUser = import.meta.env.VITE_ADMIN_USER || 'admin';
       const adminPass = import.meta.env.VITE_ADMIN_PASS || 'admin123';
+      
+      // Em produção, usar credenciais mais seguras se não definidas
+      const defaultUser = typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? 'admin' : 'admin';
+      const defaultPass = typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? 'admin2024' : 'admin123';
+      
       const adminKey = adminUser.toLowerCase();
+
+      // APENAS adicionar se não existir
       if (!usersMap[adminKey]) {
         usersMap[adminKey] = {
-          password: adminPass,
+          password: adminPass || defaultPass,
           user: {
             id: Date.now().toString(),
-            username: adminUser,
+            username: adminUser || defaultUser,
             email: 'admin@local',
             createdAt: new Date().toISOString(),
             role: 'admin',
           },
         };
+        console.log('🔧 Admin criado:', adminUser || defaultUser);
       }
     }
 
+    // 3) SALVAR apenas se houve mudanças (não sobrescrever desnecessariamente)
     const currentSaved = localStorage.getItem('3d-printing-users');
     const newSaved = JSON.stringify(usersMap);
-    if (currentSaved !== newSaved) localStorage.setItem('3d-printing-users', newSaved);
-
+    
+    if (currentSaved !== newSaved) {
+      localStorage.setItem('3d-printing-users', newSaved);
+      console.log('💾 Dados de usuários salvos');
+    }
+    
     dispatch({ type: 'LOAD_USERS', payload: usersMap });
+    console.log('📊 Estado atualizado com', Object.keys(usersMap).length, 'usuários');
 
-    // Restaura sessão
+    // 4) Restaurar usuário atual (se houver)
     const savedCurrentUser = localStorage.getItem('3d-printing-current-user');
     if (savedCurrentUser) {
       try {
         const user = JSON.parse(savedCurrentUser) as User;
-        const userWithRole = { ...user, role: (user.role ?? 'user') as const };
+        // MIGRA: se vier sem role, define 'user'
+        const userWithRole = { ...user, role: user.role ?? 'user' as const };
         dispatch({ type: 'LOGIN', payload: userWithRole });
-      } catch {
-        // ignore
+        console.log('👤 Usuário atual restaurado:', userWithRole.username);
+      } catch (e) {
+        console.error('❌ Erro carregando usuário atual:', e);
       }
     }
   }, []);
 
-  /** Persiste users */
   useEffect(() => {
+    // CRÍTICO: Só salvar se realmente houver usuários para não sobrescrever
+    if (typeof window === 'undefined') return; // SSR protection
+    
     if (Object.keys(state.users).length > 0) {
-      localStorage.setItem('3d-printing-users', JSON.stringify(state.users));
+      try {
+        localStorage.setItem('3d-printing-users', JSON.stringify(state.users));
+      } catch (error) {
+        console.error('❌ Erro ao salvar usuários:', error);
+      }
+      console.log('💾 Usuários salvos no localStorage:', Object.keys(state.users));
+      console.log('📊 Total de usuários salvos:', Object.keys(state.users).length);
+      console.log('🔍 Dados completos salvos:', JSON.stringify(state.users, null, 2));
+    } else {
+      console.warn('⚠️ Tentativa de salvar estado vazio - ignorando para preservar dados');
     }
   }, [state.users]);
 
-  /** Persiste sessão */
   useEffect(() => {
+    if (typeof window === 'undefined') return; // SSR protection
+    
     if (state.currentUser) {
-      localStorage.setItem('3d-printing-current-user', JSON.stringify(state.currentUser));
+      try {
+        localStorage.setItem('3d-printing-current-user', JSON.stringify(state.currentUser));
+      } catch (error) {
+        console.error('❌ Erro ao salvar usuário atual:', error);
+      }
     } else {
       localStorage.removeItem('3d-printing-current-user');
     }
   }, [state.currentUser]);
 
-  /** Helper de timeout (Supabase sync em background) */
-  const withTimeout = <T,>(p: Promise<T>, ms = 4000) =>
-    Promise.race<T>([
-      p,
-      new Promise<T>((_, rej) => setTimeout(() => rej(new Error('ensureProfileId: timeout')), ms)),
-    ]);
+  const login = (username: string, password: string): boolean => {
+    const id = username.trim().toLowerCase();
 
-  /** LOGIN: recarrega do localStorage se o estado ainda não tiver usuários */
-  const login = async (username: string, password: string): Promise<boolean> => {
-    const id = (username || '').trim().toLowerCase();
+    // 1) tentar por username
+    let userData = state.users[id];
 
-    // 1) Usa o que temos no estado
-    let users = state.users;
-
-    // 2) Se estiver vazio, recarrega do localStorage e injeta no estado
-    if (!users || Object.keys(users).length === 0) {
-      users = readUsersFromLS();
-      if (Object.keys(users).length > 0) {
-        dispatch({ type: 'LOAD_USERS', payload: users });
-      }
-    }
-
-    // 3) Resolve pelo username (chave) ou e-mail
-    let userData = users[id];
+    // 2) se não achou, procurar por e-mail
     if (!userData) {
-      const vals = Object.values(users) as Array<{ password: string; user: User }>;
-      userData = vals.find((u) => (u.user.email || '').toLowerCase() === id);
+      const byEmail = Object.values(state.users).find(
+        u => u.user.email?.toLowerCase() === id
+      );
+      if (byEmail) userData = byEmail;
     }
 
-    if (!userData) return false;
-    if (userData.user.suspended) return false;
-    if (userData.password !== password) return false;
-
-    const key = (userData.user.username || '').toLowerCase();
-    const localId = userData.user.id || Date.now().toString();
-    const updatedUserImmediate: User = {
-      ...userData.user,
-      id: localId,
-      lastLoginAt: new Date().toISOString(),
-    };
-
-    // Autentica imediatamente
-    dispatch({ type: 'UPDATE_USER', payload: { usernameKey: key, user: updatedUserImmediate } });
-    dispatch({ type: 'LOGIN', payload: updatedUserImmediate });
-
-    // Sincroniza ID com Supabase em background (sem travar a UI)
-    (async () => {
-      try {
-        const supaId = await withTimeout(
-          ensureProfileId(userData!.user.email, userData!.user.role),
-          4000
-        );
-        if (supaId && supaId !== localId) {
-          const syncedUser: User = { ...updatedUserImmediate, id: supaId };
-          dispatch({ type: 'UPDATE_USER', payload: { usernameKey: key, user: syncedUser } });
-          dispatch({ type: 'LOGIN', payload: syncedUser });
-        }
-      } catch (err) {
-        console.warn('[ensureProfileId skip]', (err as Error)?.message || err);
-      }
-    })();
-
-    return true;
+    console.log('🔍 Tentativa de login:', { identifier: username, userExists: !!userData });
+    console.log('👥 Usuários disponíveis:', Object.keys(state.users));
+    if (userData && userData.password === password && !userData.user.suspended) {
+      const now = new Date().toISOString();
+      const key = userData.user.username.toLowerCase();
+      const updatedUser: User = { ...userData.user, lastLoginAt: now };
+      
+      dispatch({ type: 'UPDATE_USER', payload: { usernameKey: key, user: updatedUser } });
+      dispatch({ type: 'LOGIN', payload: updatedUser });
+      console.log('✅ Login bem-sucedido:', userData.user);
+      return true;
+    } else if (userData && userData.user.suspended) {
+      console.log('🚫 Login negado - usuário suspenso');
+    }
+    console.log('❌ Login falhou');
+    return false;
   };
 
-  /** CREATE USER (somente admin) */
-  const createUser = async (data: {
-    email: string;
-    password: string;
-    role?: 'admin' | 'user';
-    username?: string;
-  }): Promise<boolean> => {
+  const createUser = (data: {email: string; password: string; role?: 'admin'|'user'; username?: string}): boolean => {
+    console.log('🔧 Tentando criar usuário:', data);
+    console.log('👤 Usuário atual:', state.currentUser);
+    console.log('🔑 É admin?', state.currentUser?.role === 'admin');
+    
     if (!state.currentUser || state.currentUser.role !== 'admin') return false;
 
     const email = data.email.trim();
     const role = data.role ?? 'user';
 
-    // e-mail duplicado
+    // verificar duplicidade de e-mail
     const existsByEmail = Object.values(state.users).some(
-      (u) => (u.user.email || '').toLowerCase() === email.toLowerCase()
+      u => u.user.email?.toLowerCase() === email.toLowerCase()
     );
-    if (existsByEmail) return false;
+    if (existsByEmail) {
+      console.log('❌ E-mail já existe:', email);
+      return false;
+    }
 
-    // username único (chave do mapa)
+    // gerar/validar username único (chave do mapa)
     const base = (data.username?.trim().toLowerCase()) || slugFromEmail(email);
     const username = pickUniqueUsername(base, state.users);
 
-    // tenta garantir/obter o id no Supabase (sem quebrar fluxo local)
-    let supaId = '';
-    try {
-      supaId = await withTimeout(ensureProfileId(email, role), 4000);
-    } catch {
-      // segue com id local se Supabase indisponível
-    }
-
-    const newUser: User = {
-      id: supaId || Date.now().toString(),
-      username,
-      email,
-      createdAt: new Date().toISOString(),
-      role,
-    };
-    const key = username.toLowerCase();
-
+    console.log('✅ Criando usuário:', { username, email, role });
+    
+    // criar user
     dispatch({
-      type: 'LOAD_USERS',
-      payload: { ...state.users, [key]: { password: data.password, user: newUser } },
+      type: 'CREATE_USER',
+      payload: { username, email, password: data.password, role }
     });
+    
+    console.log('🎉 Usuário criado com sucesso!');
     return true;
   };
 
-  /** UPDATE PROFILE (usuário altera seus dados locais) */
-  const updateProfile = (data: {
-    username?: string;
-    email?: string;
-    newPassword?: string;
-  }): { ok: boolean; reason?: string } => {
+  const updateProfile = (data: { username?: string; email?: string; newPassword?: string }): { ok: boolean; reason?: string } => {
     const me = state.currentUser;
     if (!me) return { ok: false, reason: 'not-authenticated' };
 
-    // e-mail duplicado (exceto eu)
+    // checar e-mail duplicado (exceto o meu)
     if (data.email) {
-      const dup = Object.values(state.users).some(
-        (u) =>
-          (u.user.email || '').toLowerCase() === data.email!.toLowerCase() &&
-          u.user.id !== me.id
-      );
+      const dup = Object.values(state.users).some(u => u.user.email.toLowerCase() === data.email!.toLowerCase() && u.user.id !== me.id);
       if (dup) return { ok: false, reason: 'email-taken' };
     }
 
+    // se o username mudou, precisamos mover a entrada de chave
     const oldKey = me.username.toLowerCase();
-    const newUsername = data.username?.trim() || me.username;
+    const newUsername = (data.username?.trim() || me.username);
     const newKey = newUsername.toLowerCase();
 
-    if (newKey !== oldKey && state.users[newKey])
+    // se for mudar username, garantir que não exista outro com essa chave
+    if (newKey !== oldKey && state.users[newKey]) {
       return { ok: false, reason: 'username-taken' };
+    }
 
+    // monta novo user
     const newUser: User = { ...me, username: newUsername, email: data.email ?? me.email };
 
-    const users = { ...state.users };
+    // aplica no mapa (movendo chave se necessário)
+    let users = { ...state.users };
     const currentPwd = users[oldKey].password;
     delete users[oldKey];
     users[newKey] = { password: data.newPassword ?? currentPwd, user: newUser };
 
+    // persiste no estado
     dispatch({ type: 'LOAD_USERS', payload: users });
-    dispatch({ type: 'LOGIN', payload: newUser });
+    dispatch({ type: 'LOGIN', payload: newUser }); // mantém sessão com novo perfil
+
     return { ok: true };
   };
 
-  /** SUSPENDER usuário (somente admin) */
   const suspendUser = (userId: string, suspended: boolean): boolean => {
     if (!state.currentUser || state.currentUser.role !== 'admin') return false;
-    if (state.currentUser.id === userId) return false; // não suspende a si mesmo
+    
+    // Não permitir suspender a si mesmo
+    if (state.currentUser.id === userId) return false;
+    
     dispatch({ type: 'SUSPEND_USER', payload: { userId, suspended } });
     return true;
   };
 
-  /** LOGOUT */
   const logout = () => dispatch({ type: 'LOGOUT' });
 
   return (
-    <AuthContext.Provider
-      value={{ state, dispatch, login, logout, createUser, updateProfile, suspendUser }}
-    >
+    <AuthContext.Provider value={{ state, dispatch, login, logout, createUser, updateProfile, suspendUser }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-/** Hook */
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
   return context;
 };
+
+export type { User };
